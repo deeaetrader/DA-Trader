@@ -10,12 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-
-
-
-```
-
-```{r}
 # Make sure to get the last week of December as the start
 # to be able to calculate percentage gain of Week 1
 library(quantmod)
@@ -69,7 +63,6 @@ SPY20 <- SPYready %>%
 ```
 
 
-
 ```{r}
 library(ggplot2)
 library(plotly)
@@ -84,6 +77,3 @@ ggplotly(
        y = "Mean % move")
 )
 ```
-
-
-
