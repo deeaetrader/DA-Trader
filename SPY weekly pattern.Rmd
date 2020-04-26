@@ -1,0 +1,159 @@
+---
+title: "Untitled"
+author: "Ricky Chua"
+date: "4/4/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+
+
+```
+
+```{r}
+# Make sure to get the last week of December as the start
+# to be able to calculate percentage gain of Week 1
+library(quantmod)
+
+getSymbols("SPY", 
+           from = as.Date("1999-12-31"), 
+           to = as.Date("2019-12-31"), 
+           src =  "yahoo")
+
+head(SPY)
+```
+
+```{r}
+# Creating a data frame with closing prices and date
+library(dplyr)
+library(lubridate)
+library(tibble)
+
+SPYdf <- rownames_to_column(as.data.frame(SPY), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, SPY.Close) %>% 
+  rename(Close = SPY.Close)
+
+# Creating a data frame consisting weeks and their closing prices
+SPYwk <- SPYdf %>% 
+  mutate(week = week(date),
+         year = year(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date)) 
+
+# Using "lag" to create weekly percentage closing prices
+SPYwk$lag <- lag(SPYwk$Close)
+
+SPYwk_perc <- SPYwk %>% 
+  mutate(perc_close = (Close - lag)/Close * 100)
+
+SPYready <- SPYwk_perc %>% 
+  na.omit() %>% 
+  select(week, year, perc_close)
+
+
+```
+
+```{r}
+library(ggplot2)
+library(plotly)
+# For 20 years weekly move, just use the whole data set.
+SPY20 <- SPYready %>% 
+  group_by(week) %>% 
+  summarize(mean = mean(perc_close)) %>% 
+  mutate(duration = "20 years")
+
+
+ggplotly(
+  SPY20 %>% 
+  ggplot(aes(x = week, y = mean, fill = mean))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(low = "red", mid = "black", high = "green")+
+  theme_minimal()+
+  labs(title = "SPY % Weekly move (20 years)",
+       x = "Week Number",
+       y = "Mean % move")
+)
+```
+
+```{r}
+# For 10 years weekly move, just use the whole data set.
+SPY10 <- SPYready %>% 
+  filter(year >= 2010) %>% 
+  group_by(week) %>% 
+  summarize(mean = round(mean(perc_close), 2)) %>% 
+  mutate(duration = "10 years")
+
+
+ggplotly(
+  SPY10 %>% 
+  ggplot(aes(x = week, y = mean, fill = mean))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(low = "red", mid = "black", high = "green")+
+  theme_minimal()+
+  labs(title = "SPY % Weekly move (10 years)",
+       x = "Week Number",
+       y = "Mean % move")
+)
+```
+
+```{r}
+# For 5 years weekly move, just use the whole data set.
+SPY05 <- SPYready %>% 
+  filter(year >= 2015) %>% 
+  group_by(week) %>% 
+  summarize(mean = round(mean(perc_close), 2)) %>% 
+  mutate(duration = "5 years")
+
+
+ggplotly(
+  SPY05 %>% 
+  ggplot(aes(x = week, y = mean, fill = mean))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(low = "red", mid = "black", high = "green")+
+  theme_minimal()+
+  labs(title = "SPY % Weekly move (05 years)",
+       x = "Week Number",
+       y = "Mean % move")
+)
+```
+
+```{r}
+SPYall <- rbind(SPY20, SPY10, SPY05)
+SPYall$duration <- factor(SPYall$duration, levels = c("5 years", "10 years", "20 years"))
+
+ggplotly(
+  SPYall %>% 
+  ggplot(aes(x = week, y = mean, fill = mean))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(low = "red", mid = "black", high = "green")+
+  theme_minimal()+
+  facet_wrap(~ duration, nrow = 3)+
+  labs(title = "SPY % Weekly move",
+       x = "Week Number",
+       y = "Mean % move")
+)
+```
+
+```{r}
+week("2020-03-11")
+```
+
+```{r}
+SPY05 %>% 
+  ggplot(aes(x = week, y = mean, fill = mean))+
+  geom_rect(aes(xmin = week(Sys.Date())-0.5, xmax = week(Sys.Date())+0.5, ymin = -Inf, ymax = +Inf), fill = "grey", alpha = 0.2)+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(low = "red", mid = "black", high = "green")+
+  theme_minimal()+
+  labs(title = "SPY % Weekly move (05 years)",
+       x = "Week Number",
+       y = "Mean % move")
+  
+```
+

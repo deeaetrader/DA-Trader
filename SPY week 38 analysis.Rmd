@@ -1,0 +1,123 @@
+---
+title: "SPY weekly pattern 20 years"
+author: "D A Trader"
+date: "4/4/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Make sure to get the last week of December as the start
+# to be able to calculate percentage gain of Week 1
+library(quantmod)
+
+getSymbols("SPY", 
+           from = as.Date("1999-12-31"), 
+           to = as.Date("2019-12-31"), 
+           src =  "yahoo")
+
+head(SPY)
+```
+
+```{r}
+# Creating a data frame with closing prices and date
+library(dplyr)
+library(lubridate)
+library(tibble)
+
+SPYdf <- rownames_to_column(as.data.frame(SPY), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, SPY.Close) %>% 
+  rename(Close = SPY.Close)
+```
+
+```{r}
+# Creating a data frame consisting weeks and their closing prices
+SPYwk <- SPYdf %>% 
+  mutate(week = week(date),
+         year = year(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date)) 
+
+# Using "lag" to create weekly percentage closing prices
+SPYwk$lag <- lag(SPYwk$Close)
+
+SPYwk_perc <- SPYwk %>% 
+  mutate(perc_close = (Close - lag)/Close * 100)
+
+SPYready <- SPYwk_perc %>% 
+  na.omit() %>% 
+  select(week, year, perc_close)
+```
+
+
+```{r}
+
+# For 20 years weekly move, just use the whole data set.
+SPY20 <- SPYready %>% 
+  group_by(week) %>% 
+  summarize(mean = mean(perc_close))
+```
+
+
+
+```{r}
+library(ggplot2)
+library(plotly)
+ggplotly(
+  SPY20 %>% 
+  ggplot(aes(x = week, y = mean, fill = mean))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(low = "red", mid = "black", high = "green")+
+  theme_minimal()+
+  labs(title = "SPY % Weekly move (20 years)",
+       x = "Week Number",
+       y = "Mean % move")
+)
+```
+
+# How many of those years were actually down?
+
+```{r}
+SPYcount <- SPYready %>% 
+  mutate(Up = perc_close > 0,
+         Down = perc_close < 0) %>% 
+  group_by(week) %>% 
+  summarize(UpCount = sum(Up),
+            DownCount = sum(Down)) %>% 
+  mutate(UpvsDown = UpCount - DownCount)
+```
+
+```{r}
+library(ggplot2)
+library(plotly)
+ggplotly(
+SPYcount %>% 
+  ggplot(aes(x = week, y = UpvsDown, fill = UpvsDown))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(high = "green", mid = "black", low = "red")+
+  theme_minimal()+
+  labs(title = "SPY number of Weekly moves (20 years)",
+       x = "Week Number",
+       y = "Number of Positive years")
+)
+```
+
+```{r}
+ggplotly(
+  SPYready %>% 
+  filter(week %in% c(25, 38)) %>% 
+  ggplot(aes(x = year, y = perc_close, fill = perc_close))+
+  geom_col(show.legend = F)+
+  scale_fill_gradient2(high = "green", mid = "black", low = "red")+
+  theme_minimal()+
+  labs(title = "Comparing Week 25 and Week 38",
+       x = "Year",
+       y = "Percentage Close")+
+  facet_wrap(~ week, ncol = 1)
+)
+```
+
