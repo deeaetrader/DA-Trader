@@ -1,0 +1,117 @@
+---
+title: "SPY 3 Downs make an Up"
+author: "D A Trader"
+date: "4/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Make sure to get the last week of December as the start
+# to be able to calculate percentage gain of Week 1
+library(quantmod)
+
+getSymbols("SPY", 
+           from = as.Date("1999-12-28"), 
+           to = as.Date("2019-12-31"), 
+           src =  "yahoo")
+
+head(SPY, 20)
+```
+
+```{r}
+# Creating a data frame with closing prices and date, then selecting only Close prices
+library(dplyr)
+library(lubridate)
+library(tibble)
+
+SPYdf <- rownames_to_column(as.data.frame(SPY), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, SPY.Close) %>% 
+  rename(Close = SPY.Close)
+
+head(SPYdf, 10)
+```
+
+```{r}
+# Create lag column, which is aligns Close price from previous day on the same row
+SPYdf$lag <- lag(SPYdf$Close)
+
+# D0_change column is the percentage change for that Day (Day 0).
+SPYperc <- SPYdf %>% 
+  mutate(D0_change = (Close - lag)/Close * 100)
+
+# D1_change etc are the percentage change for 1 day, 2 days and 3 days BEFORE Day 0.
+SPYperc <- SPYperc %>% 
+  mutate(D1_change = lag(D0_change),
+         D2_change = lag(D1_change),
+         D3_change = lag(D2_change)) %>% 
+  na.omit()
+```
+
+```{r}
+# Creating TRUE/FALSE columns for days prior that were bullish.
+SPYdays <- SPYperc %>% 
+  mutate(D0up = D0_change > 0,
+         D1up = D1_change > 0,
+         D2up = D2_change > 0,
+         D3up = D3_change > 0) %>% 
+  select(-c(2,3))
+
+# Creating new columns down1D etc for "down days in a row" prior to Day 0
+SPYdown <- SPYdays %>% 
+  mutate(down1D = D1up == 0,
+         down2D = (D1up + D2up) == 0,
+         down3D = (D1up + D2up + D3up) == 0)
+
+SPYdown[,c(1, 6:12)]
+```
+
+```{r}
+# Filter only days where SPY down 3 days in a row prior
+# Then aggregate and determine the performance of day 0.
+SPYdown %>% 
+  filter(down3D == 1) %>% 
+  summarize(Total_Occur = n(),
+            Up_Occur = sum(D0up),
+            Up_Perc = Up_Occur/n(),
+            D0_mean = mean(D0_change),
+            D0_max = max(D0_change),
+            D0_min = min(D0_change))
+```
+
+```{r}
+# Histogram of possible results if BUY on D0 given down3D
+library(ggplot2)
+
+SPYdown %>% 
+  filter(down3D == 1) %>% 
+  ggplot(aes(x = D0_change))+
+  geom_histogram(bins = 100, color = "white")+
+  theme_minimal()+
+  geom_vline(xintercept = 0, color = "red")+
+  labs(x = "Percent change after 3 down days in a row",
+       title = "Histogram of SPY percentage changes after 3 down days in a row")
+
+```
+
+```{r}
+# Find cumulative pointgain if executed this strategy over 20 years
+
+SPYperc %>% 
+  mutate(down3D = SPYdown$down3D,
+         pointgain = Close - lag) %>% 
+  filter(down3D == T) %>% 
+  summarize(Total_Occur = n(),
+            PointsGained = sum(pointgain))
+```
+
+```{r}
+# Compare to pointgain by simply buying and holding SPY
+# Taking closing price of last day of 2019, subtract last day of 1999.
+SPYdf[nrow(SPYdf), 2] - SPYdf[4,2]
+```
+
