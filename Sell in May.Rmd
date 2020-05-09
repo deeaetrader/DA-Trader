@@ -1,0 +1,344 @@
+---
+title: "Sell in May"
+author: "D A Trading"
+date: "5/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressWarnings(library(quantmod))
+
+getSymbols("SPY",
+           from = "1999-12-31",
+           to = "2019-12-31",
+           src = "yahoo")
+head(SPY)
+```
+
+```{r}
+# Creating a data frame with closing prices and date
+library(dplyr)
+library(lubridate)
+library(tibble)
+
+SPYdf <- rownames_to_column(as.data.frame(SPY), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, SPY.Close) %>% 
+  rename(Close = SPY.Close)
+
+SPYdf
+```
+
+```{r}
+# Creating a data frame consisting weeks and their closing prices
+SPYwk <- SPYdf %>% 
+  mutate(week = week(date),
+         year = year(date),
+         month = month(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date)) 
+
+# Using "lag" to create weekly percentage closing prices
+SPYwk$lag <- lag(SPYwk$Close)
+
+SPYwk <- SPYwk %>% 
+  mutate(perc_close = (Close - lag)/Close * 100) %>% 
+  na.omit()
+
+SPYwk
+```
+
+```{r}
+# Checking for week numbers that occur in May
+
+SPYwk %>% 
+  filter(month == 5) %>% 
+  group_by(week) %>% 
+  count(week)
+
+# All weeks in May fall into 18 to 21 with no exceptions.
+```
+
+```{r}
+# Checking for week numbers that occur in November
+
+SPYwk %>% 
+  filter(month == 11) %>% 
+  group_by(week) %>% 
+  count(week)
+
+# Although there are 4 years where November's last week is week 48, 
+# for simplicity let's just stick to Week 47 as the final week of our study.
+```
+
+```{r}
+# Create data frames where x-week after Week 21, we know the change since Week 21
+clwk21 <- SPYwk %>% 
+  filter(week == 21) %>% 
+  select(Close, year) %>% 
+  rename(clwk21 = Close)
+
+deltayear <- SPYwk[, c(2:5)] %>% 
+  filter(week %in% c(21:47)) %>% 
+  inner_join(clwk21, by = "year") %>% 
+  mutate(delta = Close - clwk21,
+    delta_perc = (Close - clwk21)/Close * 100) %>% 
+  select(year, week.x, month, delta, delta_perc) %>% 
+  rename(week = week.x)
+
+deltayear
+```
+
+```{r}
+library(ggplot2)
+
+deltayear %>% 
+  ggplot(aes(x = week, y = year, fill = delta_perc))+
+  geom_tile()+
+  scale_fill_gradient2(low = "red", high = "green4", mid = "white", midpoint = 0)+
+  theme_minimal()+
+  labs(title = "Heatmap of SPY changes compared to end of May",
+       caption = "Red signifies percentage change for that week lower than end of May",
+       fill = "% change")
+```
+
+```{r}
+deltayear %>% 
+  ggplot(aes(x = week, y = delta_perc))+
+  geom_line(aes(color = as.factor(year)))+
+  geom_hline(yintercept = 0)+
+  theme_minimal()+
+  labs(y = "% change from End of May",
+       title = "%change from End of May by Year")
+```
+
+```{r}
+deltayear %>% 
+  group_by(month) %>% 
+  summarize(mean_perc = mean(delta_perc)) %>% 
+  ggplot(aes(x = month, y = mean_perc, fill = mean_perc))+
+  geom_col()+
+  theme_minimal()+
+  scale_fill_gradient2(low = "red", high = "green4", mid = "white", midpoint = 0)+
+  scale_x_continuous(breaks = c(5:11))+
+  labs(y = "Mean % change from End of May",
+       title = "MEAN % change since End of May for each month",
+       fill = "% change")
+```
+
+```{r}
+deltayear %>% 
+  group_by(month) %>% 
+  summarize(mean_perc = median(delta_perc)) %>% 
+  ggplot(aes(x = month, y = mean_perc, fill = mean_perc))+
+  geom_col()+
+  theme_minimal()+
+  scale_fill_gradient2(low = "red", high = "green4", mid = "white", midpoint = 0)+
+  scale_x_continuous(breaks = c(5:11))+
+  labs(y = "Median % change from End of May",
+       title = "MEDIAN % change since End of May for each month",
+       fill = "% change")
+```
+
+```{r}
+library(tidyr)
+deltayear %>% 
+  mutate(up = delta_perc > 0,
+         down = delta_perc < 0) %>% 
+  group_by(month) %>% 
+  summarize(up = sum(up),
+            down = sum(down)) %>% 
+  gather(-month, key = "up_down", value = "occur") %>% 
+  filter(month != 5) %>% 
+  ggplot(aes(x = month, y = occur, fill = up_down))+
+  geom_col(position = "fill")+
+  geom_hline(yintercept = 0.5)+
+  theme_minimal()+
+  scale_fill_manual(values = c("red", "green4"))+
+  scale_x_continuous(breaks = c(5:11))+
+  labs(y = "Ratio of Up vs Down weeks",
+       title = "Proportion of Up vs Down weeks from May to November over 20 years",
+       fill = "")
+```
+
+```{r}
+deltayear %>% 
+  ggplot(aes(x = as.factor(week), y = delta))+
+  geom_boxplot(color = "blue")+
+  geom_hline(yintercept = 0)+
+  theme_minimal()+
+  labs(x = "Week",
+       y = "Change from End of May",
+       title = "Boxplot of changes from End of May by Year",
+       caption = "Line at center of boxplot signifies median")
+```
+
+```{r}
+# Two-sided t-test to test if "sumery" months gain less than "wintery" months
+summery <- deltayear %>% 
+  filter(week == 47) %>% 
+  ungroup() %>% 
+  select(year, delta_perc)
+
+
+# Create data frames where x-week after Week 47, we know the change since Week 47
+clwk47 <- SPYwk %>% 
+  filter(week == 47) %>% 
+  select(Close, year) %>% 
+  rename(clwk47 = Close)
+
+temp <- SPYwk[, c(2:5)] %>% 
+  filter(week %in% c(21,47)) 
+
+temp$lag <- lag(temp$Close)
+
+wintery <- temp %>% 
+  mutate(delta_perc = (Close - lag)/Close * 100) %>% 
+  filter(week == 21) %>% 
+  ungroup() %>%
+  select(year, delta_perc) %>% 
+  na.omit()
+
+t.test(wintery$delta_perc, summery$delta_perc, alternative = "less")
+```
+
+```{r}
+# Volumes comparison
+SPYvol <- rownames_to_column(as.data.frame(SPY), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, SPY.Volume) %>% 
+  rename(Vol = SPY.Volume)
+  
+SPYvolmonth <- SPYvol %>%
+  mutate(week = week(date),
+         year = year(date),
+         month = month(date))
+
+SPYvolagg <- SPYvolmonth %>% 
+  group_by(month) %>% 
+  summarize(mean = mean(Vol),
+            median = median(Vol)) %>% 
+  gather(-month, key = "Mean_Median", value = "Volume")
+
+SPYvolagg %>% 
+  ggplot(aes(x = month, y = Volume, fill = Mean_Median))+
+  geom_rect(aes(xmin = 5.5, xmax = 11.5, ymin = -Inf, ymax = +Inf), fill = "yellow")+
+  geom_col()+
+  facet_wrap(~ Mean_Median, ncol = 1)+
+  scale_x_continuous(breaks = seq(1,12,1))+
+  theme_minimal()+
+  labs(x = "Month",
+       title = "Volumes by month over 20 years",
+       fill = "Type")
+```
+
+```{r}
+# t-test of volumes to determine if statistically lower
+vol2 <- SPYvolmonth[-1,] %>% 
+  group_by(year, month) %>% 
+  summarize(mean_vol = mean(Vol)) %>% 
+  mutate(summery = month %in% c(6:11),
+         wintery = month %in% c(1:5, 12))
+
+sumvol <- vol2 %>% 
+  filter(summery == T)
+
+winvol <- vol2 %>% 
+  filter(wintery == T)
+
+t.test(winvol$mean_vol, sumvol$mean_vol, alternative = "less")
+```
+
+```{r}
+# Portfolio performance
+
+# Buy and hold: Last row of close minus first row of close
+bnhgain <- SPYdf[nrow(SPYdf),2] - SPYdf[1,2]
+
+# Buy and hold buy sell every 31 May, buy back every 1 Dec (Nov)
+novworking <- SPYdf %>% 
+  mutate(month = month(date),
+         year = year(date),
+         day = day(date)) %>% 
+  filter(month %in% c(5,11)) %>% 
+  group_by(month, year) %>% 
+  filter(date == max(date))
+
+novworking$lag <- lag(novworking$Close)
+
+novgain <- novworking %>% 
+  mutate(gain = Close - lag) %>% 
+  filter(month == 11) %>% 
+  ungroup() %>% 
+  summarize(gain = sum(gain))
+
+sellinmaygain_nov <- as.vector(bnhgain - novgain)
+sellinmaygain_nov
+```
+
+```{r}
+# Buy and hold buy sell every 31 May, buy back every 1 Nov (Oct)
+octworking <- SPYdf %>% 
+  mutate(month = month(date),
+         year = year(date),
+         day = day(date)) %>% 
+  filter(month %in% c(5,10)) %>% 
+  group_by(month, year) %>% 
+  filter(date == max(date))
+
+octworking$lag <- lag(octworking$Close)
+
+octgain <- octworking %>% 
+  mutate(gain = Close - lag) %>% 
+  filter(month == 10) %>% 
+  ungroup() %>% 
+  summarize(gain = sum(gain))
+
+sellinmaygain_oct <- bnhgain - octgain
+sellinmaygain_oct
+```
+
+```{r}
+# Buy and hold buy sell every 31 May, buy back every 1 Oct (Sep)
+sepworking <- SPYdf %>% 
+  mutate(month = month(date),
+         year = year(date),
+         day = day(date)) %>% 
+  filter(month %in% c(5,9)) %>% 
+  group_by(month, year) %>% 
+  filter(date == max(date))
+
+sepworking$lag <- lag(sepworking$Close)
+
+sepgain <- sepworking %>% 
+  mutate(gain = Close - lag) %>% 
+  filter(month == 9) %>% 
+  ungroup() %>% 
+  summarize(gain = sum(gain))
+
+sellinmaygain_sep <- bnhgain - sepgain
+sellinmaygain_sep
+```
+
+```{r}
+# Combining into one data frame
+portfolio <- data.frame("Strategy" = c("Buy_hold", "Sell_till_Sep", "Sell_till_Oct", "Sell_till_Nov"), "Gain" = unlist(c(bnhgain, sellinmaygain_sep, sellinmaygain_oct, sellinmaygain_nov)))
+
+portfolio$Strategy <- factor(portfolio$Strategy, levels = c("Buy_hold", "Sell_till_Sep", "Sell_till_Oct", "Sell_till_Nov"))
+
+portfolio
+```
+
+```{r}
+portfolio %>% 
+  ggplot(aes(x = Strategy, y = Gain, fill = Gain))+
+  geom_col(show.legend = F)+
+  theme_minimal()+
+  scale_fill_gradient2(low = "red", high = "green4", mid = "white", midpoint = 0)+
+  labs(title = "Gains comparison of Buy & Hold vs Sell in May")
+```
+
