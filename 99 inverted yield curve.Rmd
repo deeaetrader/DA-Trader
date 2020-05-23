@@ -1,0 +1,155 @@
+---
+title: "7 mother of all inverted yield curves"
+author: "D A Trading"
+date: "5/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Data is scraped from Daily US Treasury Yield website:
+https://www.treasury.gov/resource-center/data-chart-center/interest-rates/pages/TextView.aspx?data=yieldAll
+
+```{r}
+# Cleaning the data
+library(readr)
+library(lubridate)
+library(naniar)
+library(dplyr)
+raw <- read_csv("US_treasury.csv")
+
+yield <- raw
+
+yield$Date <- mdy(yield$Date)
+  
+yield <- yield %>% 
+  rename(mth1 = "1 Mo",
+         mth2 = "2 Mo",
+         mth3 = "3 Mo",
+         mth6 = "6 Mo",
+         yr1 = "1 Yr",
+         yr2 = "2 Yr",
+         yr3 = "3 Yr",
+         yr5 = "5 Yr",
+         yr7 = "7 Yr",
+         yr10 = "10 Yr",
+         yr20 = "20 Yr",
+         yr30 = "30 Yr") %>% 
+  replace_with_na(replace = list(mth1 = "N/A",
+                                 mth2 = "N/A",
+                                 yr20 = "N/A")) %>% 
+  mutate_at(c("mth1", "mth2", "yr20"), as.numeric)
+
+yield
+```
+
+```{r}
+# Feature engineer new columns indicating inversion TRUE or FALSE
+# "mth3mth6" means "Is mth3 > mth6?"
+# Note that first few columns have NA, but that is expected/
+
+a <- yield[,1]
+b <- 2
+for(i in 2:(ncol(yield) - 1)){
+  
+  for(j in (i+1):ncol(yield)){
+
+    a[[b]] <- yield[[i]] > yield[[j]]
+    b <- b + 1
+  }
+}
+
+c <- "Date"
+d <- 2
+for(i in 2:(ncol(yield) - 1)){
+  for(j in (i+1):ncol(yield)){
+    c[d] <- paste0(colnames(yield[,i]),colnames(yield[,j]))
+    d <- d + 1
+  }
+}
+
+colnames(a) <- c
+
+a
+```
+
+```{r}
+# Merging both "yield" and "a" together into one super table
+
+yield_expand <- yield %>% 
+  inner_join(a, by = "Date")
+
+tail(yield_expand)
+```
+
+```{r}
+# Creating column for summing inversion counts
+yield_inv <- yield_expand %>%  
+  mutate(count_invert = rowSums(.[14:79], na.rm = T))
+
+yield_inv %>% 
+  filter(count_invert == max(count_invert))
+```
+
+```{r}
+library(ggplot2)
+inv_plot <- yield_inv %>% 
+  ggplot(aes(x = Date, y = count_invert))+
+  geom_area()
+```
+
+```{r}
+library(quantmod)
+
+getSymbols("SPY",
+           from = "1990-01-02",
+           to = "2020-05-15")
+
+library(tibble)
+SPY <- rownames_to_column(as.data.frame(SPY), var = "date") %>% 
+  mutate(date = ymd(date))
+
+SPY_plot <- SPY %>% 
+  ggplot(aes(x = date, y = SPY.Adjusted))+
+  geom_line()
+
+library(gridExtra)
+grid.arrange(SPY_plot, inv_plot)
+
+```
+
+```{r}
+# Plotting Yield curves based on different inversion counts
+
+# Based on inversion count == 0.
+curve2010 <- yield_inv %>% 
+  filter(Date == "2010-01-04") %>% 
+  select(1:13) %>% 
+  gather(-Date, key = "Treasury", value = "Yield")
+
+curve2010$Treasury <- factor(curve2010$Treasury, levels = c("mth1", "mth2", "mth3", "mth6", "yr1", "yr2", "yr3", "yr5", "yr7", "yr10", "yr20", "yr30"))
+
+curve2010 %>% 
+  ggplot(aes(x = Treasury, y = Yield, group = 1))+
+  geom_line(data = curve2010[!is.na(curve2010$Yield),])
+
+```
+
+```{r}
+# Based on inversion count == max(count_inv)
+
+curve2019 <- yield_inv %>% 
+  filter(count_invert == max(count_invert),
+         Date == "2019-08-27") %>% 
+  select(1:13) %>% 
+  gather(-Date, key = "Treasury", value = "Yield")
+
+curve2019$Treasury <- factor(curve2019$Treasury, levels = c("mth1", "mth2", "mth3", "mth6", "yr1", "yr2", "yr3", "yr5", "yr7", "yr10", "yr20", "yr30"))
+
+curve2019 %>% 
+  ggplot(aes(x = Treasury, y = Yield, group = 1))+
+  geom_line(data = curve2019[!is.na(curve2019$Yield),])
+```
+

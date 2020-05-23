@@ -1,0 +1,112 @@
+---
+title: "________"
+author: "D A Trading"
+date: "5/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Getting stock data from Yahoo (TIME SERIES)
+library(lubridate)
+library(quantmod)
+
+getSymbols("^GSPC",
+           from = "1927-12-01",
+           to = today(),
+           src = "yahoo")
+head(GSPC)
+```
+
+```{r}
+# Converting TIME SERIES to DATA FRAME first
+
+library(tibble)
+library(dplyr)
+library(lubridate)
+
+GSPCdf <- rownames_to_column(as.data.frame(GSPC), var = "date") %>% 
+  mutate(date = ymd(date))
+
+GSPCdf
+```
+
+```{r}
+# Calculating %change in a new column "perc_change"
+# Uses "dplyr" functions: mutate() and %>% (pipe)
+
+GSPCpc <- GSPCdf %>% 
+  select(date, GSPC.Close) %>% 
+  mutate(prev_close = lag(GSPC.Close),
+         change = GSPC.Close - prev_close,
+         perc_change = change/prev_close * 100)
+
+GSPCpc
+```
+
+```{r}
+# Sorting by worst daily points loss
+
+GSPCpc %>% 
+  arrange(change)
+```
+
+```{r}
+# Plotting daily points changes
+library(ggplot2)
+
+GSPCpc %>% 
+  ggplot(aes(x = date, y = change, color = abs(change)))+
+  geom_line()+
+  theme_minimal()+
+  scale_color_gradient(low = "grey", high = "red")+
+  labs(title = "Single day POINTS changes in S&P",
+       color = "Magnitude")
+```
+
+
+```{r}
+# Sorting by worst daily percentage loss
+
+GSPCpc %>% 
+  arrange(perc_change)
+```
+
+```{r}
+# Plotting daily percentage changes
+
+GSPCpc %>% 
+  ggplot(aes(x = date, y = perc_change, color = abs(perc_change)))+
+  geom_line()+
+  theme_minimal()+
+  scale_color_gradient(low = "grey", high = "red")+
+  labs(title = "Single day PERCENTAGE changes in S&P",
+       color = "Magnitude",
+       y = "% change")
+```
+
+
+```{r}
+# What is the worst 15 day period in history?
+
+GSPC15 <- GSPCdf %>% 
+  select(date, GSPC.Close) %>% 
+  mutate(prev_close = lag(GSPC.Close, n = 15L),
+         change = GSPC.Close - prev_close,
+         perc_change = change/prev_close * 100) %>% 
+  arrange(perc_change)
+
+GSPC15 %>% 
+  ggplot(aes(x = date, y = perc_change, color = abs(perc_change)))+
+  geom_line()+
+  theme_minimal()+
+  scale_color_gradient(low = "grey", high = "red")+
+  labs(title = "Rolling 15-day PERCENTAGE changes in S&P",
+       color = "Magnitude",
+       y = "% change")
+  
+```
+

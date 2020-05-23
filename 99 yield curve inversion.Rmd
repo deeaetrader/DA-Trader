@@ -1,0 +1,122 @@
+---
+title: "6 yield curve inversion"
+author: "D A Trading"
+date: "5/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(quantmod)
+
+getSymbols(c("^IRX", "^FVX", "^TNX" ,"^TYX", "^GSPC"),
+           from = "1977-02-01",
+           to = "2020-05-15")
+```
+
+
+```{r}
+# Data wrangling
+
+library(dplyr)
+library(tibble)
+library(lubridate)
+
+SPdf <- rownames_to_column(as.data.frame(GSPC), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, GSPC.Close) %>% 
+  rename(Close = GSPC.Close) 
+
+IRX <- rownames_to_column(as.data.frame(IRX), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, IRX.Close) %>% 
+  rename(Close = IRX.Close)
+IRXdf <- IRX %>% 
+  na.omit() %>% 
+  mutate(week = week(date),
+         year = year(date),
+         month = month(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date))
+
+FVX <- rownames_to_column(as.data.frame(FVX), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, FVX.Close) %>% 
+  rename(Close = FVX.Close)
+FVXdf <- FVX %>% 
+  na.omit() %>% 
+  mutate(week = week(date),
+         year = year(date),
+         month = month(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date))
+
+TNX <- rownames_to_column(as.data.frame(TNX), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, TNX.Close) %>% 
+  rename(Close = TNX.Close)
+TNXdf <- TNX %>% 
+  na.omit() %>% 
+  mutate(week = week(date),
+         year = year(date),
+         month = month(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date))
+
+TYX <- rownames_to_column(as.data.frame(TYX), var = "date") %>% 
+  mutate(date = ymd(date)) %>% 
+  select(date, TYX.Close) %>% 
+  rename(Close = TYX.Close) 
+TYXdf <- TYX %>% 
+  na.omit() %>% 
+  mutate(week = week(date),
+         year = year(date),
+         month = month(date)) %>% 
+  group_by(year, week) %>% 
+  filter(date == max(date))
+
+# Combining all 4 into one dataframe of yields by week
+yieldswk <- inner_join(IRXdf, FVX, by = "date") %>% 
+  inner_join(TNX, by = "date") %>% 
+  inner_join(TYX, by = "date") %>% 
+  inner_join(SPdf, by = "date") %>% 
+  rename(IRX = Close.x,
+         FVX = Close.y,
+         TNX = Close.x.x,
+         TYX = Close.y.y,
+         SPX = Close)
+yieldswk <- yieldswk[,c(1,3,4,5,2,6,7,8,9)]
+
+yieldswk
+```
+
+```{r}
+# Creating inversion columns 
+
+inversionIRXTNX <- yieldswk %>% 
+  mutate(IRX.TNX = IRX - TNX,
+         Up = (IRX.TNX > 0))
+
+library(ggplot2)
+IRXTNXplot <- inversionIRXTNX %>% 
+  ggplot(aes(x = date, y = IRX.TNX, color = Up))+
+  geom_col(show.legend = F)+
+  scale_color_manual(values = c("green4", "red"))+
+  theme_minimal()
+
+SPplot <- yieldswk %>% 
+  ggplot(aes(x = date, y = SPX))+
+  geom_line()+
+  theme_minimal()
+
+library(gridExtra)
+grid.arrange(SPplot, IRXTNXplot)
+```
+
+```{r}
+SPdf
+```
+
